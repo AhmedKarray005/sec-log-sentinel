@@ -1,0 +1,10 @@
+2025-12-04T10:15:30Z INFO  LOGIN_SUCCESS user=alice ip=192.168.1.10
+2025-12-04T10:15:32Z WARN  LOGIN_FAIL    user=alice ip=192.168.1.10 reason=bad_password
+2025-12-04T10:15:34Z WARN  LOGIN_FAIL    user=alice ip=192.168.1.10 reason=bad_password
+2025-12-04T10:15:38Z WARN  LOGIN_FAIL    user=alice ip=192.168.1.10 reason=bad_password
+
+2025-12-04T03:12:01Z WARN  LOGIN_FAIL    user=admin ip=203.0.113.5 reason=bad_password
+2025-12-04T03:12:03Z WARN  LOGIN_FAIL    user=root  ip=203.0.113.5 reason=bad_password
+2025-12-04T03:12:05Z WARN  LOGIN_FAIL    user=test  ip=203.0.113.5 reason=bad_password
+
+2025-12-04T11:00:00Z INFO  LOGIN_SUCCESS user=admin ip=203.0.113.5
