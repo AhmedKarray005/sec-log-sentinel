@@ -1,195 +1,103 @@
 # Security Log Sentinel
-Advanced defensive cyber tool written in Rust to analyze and monitor authentication logs in real time.  
-It detects multiple attack patterns such as brute-force, password spraying, and account takeover attempts, all with color-coded alerts for fast triage.
 
----
+A Rust command-line learning project for parsing authentication logs, summarizing
+failed logins and printing heuristic alerts while a file grows.
 
-## 1. Authors
-- **Ahmed Karray — Group CDOF3**
+## Data flow
 
----
+```mermaid
+flowchart LR
+    File[UTF-8 log file] --> Parser[RFC3339 and event parser]
+    Parser --> State[In-memory counters and sets]
+    State --> Batch[Batch summary]
+    State --> Live[Console alerts in monitor mode]
+```
 
-## 2. Project Overview
-Security Log Sentinel is a Rust-based defensive cybersecurity tool capable of:
+The implementation uses Rust, Clap for the CLI and Chrono for timestamps.
+It reads local files; it does not connect to identity providers or collect
+operating-system logs automatically.
 
-- Parsing authentication logs  
-- Detecting suspicious or malicious login behaviour  
-- Running in **batch analysis** mode  
-- Running in **real-time monitoring** mode  
-- Displaying color-coded alerts  
-- Detecting patterns similar to SIEM and IDS tools  
+## Build and run
 
-This project was built for the “Cybersecurity / Offensive & Defensive Tools” module.
+Requires a Rust toolchain supporting edition 2024 (Rust 1.85 or later).
 
----
+```bash
+cargo build --locked
+cargo test --locked
+cargo run --locked -- analyze sample_logs.txt
+```
 
-## 3. Features
+The supplied sample contains **8 events: 2 successful and 6 failed logins**.
+Malformed nonblank lines are reported and skipped. Unknown event types are
+counted as other events.
 
-### ✔ Batch log analysis (`analyze`)
-Reads a complete log file and generates a detailed security report:
+The repository currently has no automated Rust test cases; a successful
+`cargo test` invocation verifies compilation but does not establish detection
+coverage.
 
-- Number of successful logins  
-- Number of failed logins  
-- Suspicious users  
-- Suspicious IPs  
-- Top failed users and IPs  
-- Color-coded output  
+## Log format
 
----
+```text
+2026-09-29T10:00:00Z WARN LOGIN_FAIL user=alice ip=192.0.2.10
+2026-09-29T10:00:01Z INFO LOGIN_SUCCESS user=alice ip=192.0.2.10
+```
 
-### ✔ Real-time log monitoring (`monitor`)
-Works like `tail -f`, but with **live detection of attacks**:
+The first three whitespace-separated fields are an RFC3339 timestamp, level
+and event type. Recognized events are `LOGIN_SUCCESS` and `LOGIN_FAIL`.
+Optional `user=` and `ip=` fields drive aggregation; other key/value fields
+are ignored. This format is not a general syslog or JSON parser.
 
-- Detects new log lines instantly  
-- Parses + analyses each new line  
-- Prints real-time alerts  
-- Displays events in gray, warnings in yellow, alerts in red  
+## Monitor mode
 
-Realtime detection includes:
-- **Brute-force attacks**  
-- **Password spraying**  
-- **Account takeover attempts**  
+The file must already exist. Monitoring starts at its current end, so only
+newly appended lines are analyzed:
 
----
+```bash
+cargo run --locked -- monitor live_logs.txt
+```
 
-### ✔ Attack detection rules
+Append complete newline-terminated records from a second terminal. For example
+in PowerShell:
 
-| Attack Type | Trigger Condition |
-|-------------|------------------|
-| **Brute-force** | ≥ 5 failed logins from same IP within 30 seconds |
-| **Password spraying** | One IP failing on ≥ 5 distinct users |
-| **Account takeover** | One user failing from ≥ 5 distinct IPs |
+```powershell
+Add-Content live_logs.txt '2026-09-29T10:00:00Z WARN LOGIN_FAIL user=alice ip=192.0.2.10'
+```
 
-Thresholds are easily editable.
+Polling occurs every 500 ms. Stop with Ctrl+C.
 
----
+## What the thresholds mean
 
-## 4. Expected Log Format
+| Mode | Signal | Threshold |
+| --- | --- | --- |
+| Analyze | Failed logins per user or IP | At least 3 across the whole file |
+| Monitor | Repeated failures from one IP | At least 5 within 30 seconds of event timestamps |
+| Monitor | One IP targeting distinct users | At least 5 users across the monitoring session |
+| Monitor | One user targeted from distinct IPs | At least 5 IPs across the monitoring session |
 
-Each log line must follow:
+The last signal is currently labelled “Possible ACCOUNT TAKEOVER” in console
+output. It is based on failed attempts and **does not prove a successful account
+compromise**. Password-spraying and multi-IP sets have no sliding time window.
 
-TIMESTAMP LEVEL EVENT_TYPE key=value key=value ...
+## Verification and limitations
 
-makefile
-Copy code
+Review on 29 September 2026: build completed with Rust 1.90, the sample summary
+matched its eight records, and a synthetic append exercise triggered the
+five-failures-in-30-seconds alert. These are smoke checks, not a security
+effectiveness evaluation.
 
-Example:
+- Event timestamps should arrive in chronological order for the rolling queue.
+- Thresholds are hardcoded and repeated matching events can repeat alerts.
+- Missing user/IP values are grouped together.
+- State grows for the lifetime of the process; there is no persistence or
+  bounded retention policy.
+- Truncation is detected by file size. Same-size/larger file replacement and
+  partial-line writes are not handled robustly.
+- There is no alert forwarding, dashboard, automated blocking or SIEM integration.
+- Authentication logs can contain personal data; use synthetic examples for
+  public demonstrations.
 
-2025-12-04T10:15:30Z INFO LOGIN_SUCCESS user=alice ip=192.168.1.10
-2025-12-04T10:16:00Z WARN LOGIN_FAIL user=alice ip=203.0.113.5 reason=wrong_password
+## Source layout
 
-yaml
-Copy code
-
-**Required:**
-- Timestamp = RFC3339  
-- `LOGIN_SUCCESS` or `LOGIN_FAIL`  
-- Recommended: `user=`, `ip=`  
-
----
-
-## 5. Installing & Running
-
-### Build
-cargo build
-
-makefile
-Copy code
-
-Optional:
-cargo fmt
-cargo clippy
-
-yaml
-Copy code
-
----
-
-## 6. Usage Examples
-
-### A) Batch analysis
-cargo run -- analyze sample_logs.txt
-
-lua
-Copy code
-
-Example output:
-[INFO] Parsed 8 events (0 errors)
-LOGIN_SUCCESS: 2
-LOGIN_FAIL: 6
-Suspicious user: alice
-Suspicious IP: 203.0.113.5
-
-yaml
-Copy code
-
----
-
-### B) Real-time monitoring
-Terminal 1:
-cargo run -- monitor live_logs.txt
-
-scss
-Copy code
-
-Terminal 2 (simulate attacks):
-echo "2025-12-04T10:16:00Z WARN LOGIN_FAIL user=alice ip=203.0.113.5" >> live_logs.txt
-
-lua
-Copy code
-
-Example monitor output:
-[EVENT] LoginFail user=alice ip=203.0.113.5
-[ALERT] Possible BRUTE-FORCE from ip=203.0.113.5 (5 failed logins in 30s)
-
-yaml
-Copy code
-
----
-
-## 7. Internal Architecture
-
-### Components:
-- **Cli / Command** → CLI parser via `clap`
-- **LogEvent** → Parsed log structure
-- **Analyzer** →  
-  - Counts events  
-  - Tracks user/IP failures  
-  - Stores sliding windows  
-  - Tracks users per IP and IPs per user  
-- **run_analyze()** → Batch mode  
-- **run_monitor()** → Real-time mode  
-- **check_realtime_alerts()** → Attack detection engine  
-
----
-
-## 8. Limitations
-
-Current limitations:
-- Only supports simplified log format  
-- No JSON or syslog parser  
-- Static thresholds  
-- No dashboards  
-- No export functionality  
-
-Future improvements:
-- Configurable thresholds  
-- Multiple log formats  
-- GUI or web interface  
-- API for external integrations  
-
----
-
-## 9. Responsible Use
-This tool is strictly for:
-- Education  
-- SOC / Blue team learning  
-- Authorized environments  
-
-Do **NOT** use this tool to analyze or monitor logs without explicit permission.  
-Unauthorized monitoring is illegal.
-
----
-
-## 10. License
-Educational project license — for coursework and demonstration purposes.
+`src/main.rs` contains the parser, counters, CLI and both execution modes.
+`sample_logs.txt` is the batch fixture; `live_logs.txt` is a monitoring sample.
+`Cargo.lock` fixes dependency resolution for reproducible builds.
